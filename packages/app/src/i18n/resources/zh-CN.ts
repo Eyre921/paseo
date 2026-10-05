@@ -1683,7 +1683,7 @@ export const zhCN: TranslationResources = {
         failedTitle: "连接失败",
         failedToConnect: "无法连接到 {{endpoint}}。",
         noAdditionalDetails: "{{detail}}（未提供更多详情）",
-        timedOut: "连接超时。请检查主机和端口 和网络。",
+        timedOut: "连接超时。请检查主机、端口和网络。",
         refused: "连接被拒绝。服务器是否正在此地址运行？",
         hostNotFound: "未找到主机。请检查主机名后重试。",
         hostUnreachable: "主机不可达。请检查网络和防火墙。",
@@ -1749,7 +1749,7 @@ export const zhCN: TranslationResources = {
     },
     device: {
       loadingOffer: "正在加载配对邀请...",
-      failedToLoadOffer: "加载配对邀请 失败。",
+      failedToLoadOffer: "加载配对邀请失败。",
       relayDisabled: "中继未启用。启用中继后才能配对设备。",
       enableTitle: "启用中继？",
       enableDescription: "中继让此设备可以从任何地方连接。配对流量采用端到端加密。",
@@ -1761,7 +1761,7 @@ export const zhCN: TranslationResources = {
       directConnectionHint:
         "不使用中继时，请通过 TCP、Tailscale 或其他 VPN 直接连接。不会生成二维码。",
       updateRequired: "请更新主机，以便从 Paseo Desktop 启用中继。",
-      unavailable: "配对邀请 不可用。",
+      unavailable: "配对邀请不可用。",
       hint: "用手机上的 Paseo 扫描此二维码，或复制下方链接。",
       securityWarning: "请像保管密码一样保管此配对链接。任何获得此链接的人都可以访问此守护进程。",
       qrUnavailable: "二维码不可用。",
