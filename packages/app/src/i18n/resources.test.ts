@@ -129,6 +129,32 @@ describe("translation resources", () => {
     expect(countMatchingEnglishStrings(zhCN)).toBeLessThan(maxFallbackStrings);
   });
 
+  it("limits Chinese English matches to names, identifiers, and command examples", () => {
+    const englishStrings = flattenStrings(en);
+    const chineseStrings = flattenStrings(zhCN);
+    const matchingKeys = Object.entries(englishStrings)
+      .filter(([key, value]) => chineseStrings[key] === value)
+      .map(([key]) => key)
+      .sort();
+
+    expect(matchingKeys).toEqual(
+      [
+        "sidebar.help.discord",
+        "sidebar.help.appName",
+        "desktop.daemon.status.pid",
+        "settings.general.language.options.en",
+        "settings.appearance.theme.options.zinc",
+        "settings.appearance.theme.options.midnight",
+        "settings.appearance.theme.options.claude",
+        "settings.appearance.theme.options.ghostty",
+        "settings.host.appearance.preview.workspaceName",
+        "settings.host.terminalProfiles.namePlaceholder",
+        "settings.host.terminalProfiles.commandPlaceholder",
+        "settings.host.terminalProfiles.argsPlaceholder",
+      ].sort(),
+    );
+  });
+
   it("localizes the pull request empty state in every supported language", () => {
     for (const resource of [ar, es, fr, ja, ko, ptBR, ru, zhCN]) {
       expect(resource.panels.pullRequest.emptyTitle).not.toBe(en.panels.pullRequest.emptyTitle);
@@ -175,7 +201,7 @@ describe("translation resources", () => {
     expect(ja.settings.providers.models.many).toBe("{{count}}つのモデル");
     expect(ptBR.settings.providers.models.many).toBe("{{count}} modelos");
     expect(ru.settings.providers.models.many).toBe("{{count}} моделей");
-    expect(zhCN.settings.providers.models.many).toBe("{{count}} 个 Model");
+    expect(zhCN.settings.providers.models.many).toBe("{{count}} 个模型");
   });
 
   it("preserves reviewed Korean status labels", () => {
