@@ -164,6 +164,28 @@ describe("translation resources", () => {
     }
   });
 
+  it("distinguishes Git stashing from staging in Chinese action and restore guidance", () => {
+    const unavailable = zhCN.workspace.git.actions.unavailable;
+    const branchSwitcher = zhCN.branchSwitcher;
+    const stashGuidance = [
+      unavailable.pullDirty,
+      unavailable.pullAndPushDirty,
+      unavailable.mergeDirty,
+      unavailable.updateDirty,
+      branchSwitcher.uncommittedMessage,
+      branchSwitcher.stashAndSwitch,
+      branchSwitcher.failedToStash,
+      branchSwitcher.restoreStashTitle,
+      branchSwitcher.restoreStashMessage,
+      branchSwitcher.stashRestored,
+    ];
+
+    for (const label of stashGuidance) {
+      expect(label).toContain("贮藏（stash）");
+      expect(label).not.toContain("暂存");
+    }
+  });
+
   it("preserves interpolation placeholders in every language", () => {
     expect(findInterpolationMismatches(ar)).toEqual([]);
     expect(findInterpolationMismatches(es)).toEqual([]);
