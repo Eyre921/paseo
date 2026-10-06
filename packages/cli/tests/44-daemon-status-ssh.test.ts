@@ -17,9 +17,10 @@ if (process.platform === "win32") {
 
 const SSH_SETUP_MS = 2500;
 const root = await mkdtemp(join(tmpdir(), "paseo-status-ssh-"));
-const daemon = await startTestDaemon();
+let daemon: Awaited<ReturnType<typeof startTestDaemon>> | undefined;
 
 try {
+  daemon = await startTestDaemon();
   // Opens the -W stream only after the delay a real SSH handshake takes.
   await writeFile(
     join(root, "ssh"),
@@ -49,7 +50,7 @@ setTimeout(() => {
   assert.strictEqual(typeof status.serverId, "string");
   console.log("✓ status waits for the SSH stream like other commands\n");
 } finally {
-  await daemon.stop();
+  await daemon?.stop();
   await rm(root, { recursive: true, force: true });
 }
 
