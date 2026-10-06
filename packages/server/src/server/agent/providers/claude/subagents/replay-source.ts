@@ -206,27 +206,34 @@ function resolveParentLink(
 
 /**
  * The child's own transcript settles it when the parent result is absent: a final `end_turn` is a
- * completion, and a final interrupt placeholder is the cancellation live reported.
+ * completion, and a final interrupt placeholder is the cancellation live reported. An interrupt
+ * followed by a newer prompt is not final: the child was given another turn.
  */
 function readChildTerminalStatus(
   entries: readonly ClaudeReplayEntry[],
 ): ProviderSubagentStatus | null {
+  let sawLaterUserText = false;
   for (let index = entries.length - 1; index >= 0; index--) {
     const entry = entries[index];
-    if (entry?.type === "user" && isInterruptPlaceholderEntry(entry)) return "canceled";
+    if (entry?.type === "user") {
+      const texts = readUserTexts(entry);
+      if (!sawLaterUserText && texts.some(isClaudeInterruptPlaceholderText)) return "canceled";
+      if (texts.length > 0) sawLaterUserText = true;
+      continue;
+    }
     if (entry?.type !== "assistant") continue;
     return entry.message?.stop_reason === "end_turn" ? "completed" : null;
   }
   return null;
 }
 
-function isInterruptPlaceholderEntry(entry: ClaudeReplayEntry): boolean {
+/** The text a user entry carries; tool results carry none. */
+function readUserTexts(entry: ClaudeReplayEntry): string[] {
   const content = entry.message?.content;
-  if (typeof content === "string") return isClaudeInterruptPlaceholderText(content);
-  if (!Array.isArray(content)) return false;
-  return content.some(
-    (block: { type?: unknown; text?: unknown } | null) =>
-      block?.type === "text" && isClaudeInterruptPlaceholderText(block.text),
+  if (typeof content === "string") return [content];
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((block: { type?: unknown; text?: unknown } | null) =>
+    block?.type === "text" && typeof block.text === "string" ? [block.text] : [],
   );
 }
 
