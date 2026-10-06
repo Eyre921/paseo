@@ -2095,8 +2095,9 @@ class ClaudeAgentSession implements AgentSession {
     readWorkflowResult: readClaudeWorkflowResultFile,
   });
   /**
-   * Subagent tool calls Claude has already answered, with the input they were launched with. A
-   * background child is answered at launch and streams its frames afterwards.
+   * Subagent tool calls Claude has already answered while the child still runs, with the input
+   * they were launched with. A background child is answered at launch and streams its frames
+   * afterwards.
    */
   private readonly settledSubagentToolCalls = new Map<
     string,
@@ -4145,6 +4146,7 @@ class ClaudeAgentSession implements AgentSession {
     for (const event of foldSubagentObservations(subagentObservations)) {
       events.push({ type: "provider_subagent", provider: "claude", event });
     }
+    this.releaseFinishedSubagentToolCalls(subagentObservations);
     for (const observation of subagentObservations) {
       if (observation.kind !== "declared") continue;
       if (!this.taskProtocolSource.needsSyntheticParentToolCard(observation.id)) continue;
@@ -5355,8 +5357,18 @@ class ClaudeAgentSession implements AgentSession {
     item: Extract<AgentTimelineItem, { type: "tool_call" }> | null,
     entry: ToolUseCacheEntry | undefined,
   ): void {
-    if (!item || !this.taskProtocolSource.resolveSubagentId(item.callId)) return;
-    this.settledSubagentToolCalls.set(item.callId, { item, input: entry?.input ?? null });
+    const subagentId = item ? this.taskProtocolSource.resolveSubagentId(item.callId) : undefined;
+    if (!item || !subagentId) return;
+    this.settledSubagentToolCalls.set(subagentId, { item, input: entry?.input ?? null });
+  }
+
+  /** A finished child streams no more frames, so its settled call has nothing left to update. */
+  private releaseFinishedSubagentToolCalls(observations: SubagentObservation[]): void {
+    for (const observation of observations) {
+      if (observation.kind === "status" && observation.status !== "running") {
+        this.settledSubagentToolCalls.delete(observation.id);
+      }
+    }
   }
 
   private buildToolOutput(
