@@ -2094,18 +2094,29 @@ class ClaudeAgentSession implements AgentSession {
     getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
     readWorkflowResult: readClaudeWorkflowResultFile,
   });
+  /**
+   * Subagent tool calls Claude has already answered, with the input they were launched with. A
+   * background child is answered at launch and streams its frames afterwards.
+   */
+  private readonly settledSubagentToolCalls = new Map<
+    string,
+    { item: Extract<AgentTimelineItem, { type: "tool_call" }>; input: AgentMetadata | null }
+  >();
   private readonly sidechainTracker = new ClaudeSidechainTracker({
-    getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
+    getToolInput: (toolUseId) =>
+      this.toolUseCache.get(toolUseId)?.input ??
+      this.settledSubagentToolCalls.get(toolUseId)?.input ??
+      null,
     // Releases that predate the task protocol announce nothing, so the tracker keeps deriving
     // identity and status from frames for them. Detecting the capability beats comparing version
     // strings: it reacts to what this session actually does.
     isDescriptorOwnedElsewhere: () => this.taskProtocolSource.isActive,
-    // The parent's tool call owns its card once its result arrives. A background child streams
-    // its frames after Claude has already answered the call, and re-emitting the card from them
-    // would replace the settled card with an unlabeled, running one.
+    // A background child streams its frames after Claude has already answered the call, so its
+    // card is rebuilt from the settled call: a running one would replace the settled, labeled card.
     needsSyntheticParentToolCard: (toolUseId) =>
-      this.toolUseCache.has(toolUseId) &&
+      (this.toolUseCache.has(toolUseId) || this.settledSubagentToolCalls.has(toolUseId)) &&
       this.taskProtocolSource.needsSyntheticParentToolCard(toolUseId),
+    getSettledParentToolCall: (toolUseId) => this.settledSubagentToolCalls.get(toolUseId)?.item,
   });
   private persistedHistory: PersistedTimelineEntry[] = [];
   private persistedProviderSubagentEvents: Extract<
@@ -2711,6 +2722,7 @@ class ClaudeAgentSession implements AgentSession {
     this.cancelCurrentTurn = null;
     this.turnState = "idle";
     this.sidechainTracker.clear();
+    this.settledSubagentToolCalls.clear();
     this.taskProtocolSource.reset();
     this.input?.end();
     this.query?.close?.();
@@ -5308,28 +5320,22 @@ class ClaudeAgentSession implements AgentSession {
     const { images, text } = splitClaudeToolResultImages(block.content);
     const output = this.buildToolOutput(text, block, entry);
 
-    if (block.is_error) {
-      this.pushToolCall(
-        mapClaudeFailedToolCall({
+    const settledToolCall = block.is_error
+      ? mapClaudeFailedToolCall({
           name: toolName,
           callId,
           input: entry?.input ?? null,
           output: output ?? null,
           error: { ...block, content: text },
-        }),
-        items,
-      );
-    } else {
-      this.pushToolCall(
-        mapClaudeCompletedToolCall({
+        })
+      : mapClaudeCompletedToolCall({
           name: toolName,
           callId,
           input: entry?.input ?? null,
           output: output ?? null,
-        }),
-        items,
-      );
-    }
+        });
+    this.pushToolCall(settledToolCall, items);
+    this.rememberSettledSubagentToolCall(settledToolCall, entry);
 
     for (const image of images) {
       const imageItem = renderProviderImageOutputAsAssistantMarkdown(image, {
@@ -5343,6 +5349,14 @@ class ClaudeAgentSession implements AgentSession {
     if (typeof block.tool_use_id === "string") {
       this.toolUseCache.delete(block.tool_use_id);
     }
+  }
+
+  private rememberSettledSubagentToolCall(
+    item: Extract<AgentTimelineItem, { type: "tool_call" }> | null,
+    entry: ToolUseCacheEntry | undefined,
+  ): void {
+    if (!item || !this.taskProtocolSource.resolveSubagentId(item.callId)) return;
+    this.settledSubagentToolCalls.set(item.callId, { item, input: entry?.input ?? null });
   }
 
   private buildToolOutput(

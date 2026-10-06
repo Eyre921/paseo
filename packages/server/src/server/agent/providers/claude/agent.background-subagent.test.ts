@@ -431,6 +431,7 @@ describe("background Claude subagents", () => {
         type: "sub_agent",
         subAgentType: "general-purpose",
         description: "Count files here",
+        log: "[Bash] ls -1",
       },
     });
   });
