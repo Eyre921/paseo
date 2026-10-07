@@ -32,6 +32,26 @@ describe("@tintinweb/pi-subagents adapter", () => {
         .map((event) => (event.event.type === "upsert" ? event.event.status : null)),
     ).toEqual(["running", "completed"]);
   });
+  // #5828: the extension writes a transcript for foreground agents too, but its
+  // foreground result carries no `Output file:` line, so the child opens empty.
+  test("exposes the foreground child's transcript when it completes", () => {
+    const fixture = readSubagentFixture(new URL("./fixtures/foreground.json", import.meta.url));
+    const end = fixture.events.find((event) => event.type === "tool_execution_end") as {
+      toolCallId: string;
+      result: Parameters<ReturnType<typeof createPiExtensionHost>["mapToolCall"]>[0]["result"];
+    };
+    const mapping = createPiExtensionHost().mapToolCall({
+      callId: end.toolCallId,
+      toolName: "Agent",
+      args: { subagent_type: "general-purpose", prompt: "list the files in this empty workspace" },
+      status: "completed",
+      result: end.result,
+    });
+    expect(mapping?.subagents).toEqual([
+      expect.objectContaining({ id: end.toolCallId, status: "completed" }),
+    ]);
+    expect(mapping?.childSessions).toEqual([{ id: end.toolCallId, file: expect.any(String) }]);
+  });
   test("uses a structured notification to complete a background child", async () => {
     const source = readSubagentFixture(new URL("./fixtures/background.json", import.meta.url));
     const file = (
