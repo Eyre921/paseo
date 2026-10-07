@@ -44,16 +44,32 @@ function cursorPosition() {
   return { x: +x, y: +y };
 }
 
-function openVirtualMouse() {
+const MOUSE_NAME = "Paseo E2E Mouse";
+
+async function openVirtualMouse() {
   const uinput = spawn("adb", ["-s", serial, "shell", "uinput", "-"], {
     stdio: ["pipe", "ignore", "inherit"],
   });
-  const send = (command) => uinput.stdin.write(`${JSON.stringify({ id: 1, ...command })}\n`);
+  // A mouse that never registered must fail as setup, not as a missed click.
+  let failure = null;
+  uinput.on("exit", (code, signal) => {
+    failure ??= `uinput exited (code ${code}, signal ${signal})`;
+  });
+  uinput.on("error", (error) => {
+    failure ??= `uinput failed to start: ${error.message}`;
+  });
+  uinput.stdin.on("error", (error) => {
+    failure ??= `uinput stdin closed: ${error.message}`;
+  });
+  const send = (command) => {
+    if (failure) throw new Error(failure);
+    uinput.stdin.write(`${JSON.stringify({ id: 1, ...command })}\n`);
+  };
   const inject = (...events) =>
     send({ command: "inject", events: [...events, "EV_SYN", "SYN_REPORT", 0] });
   send({
     command: "register",
-    name: "Paseo E2E Mouse",
+    name: MOUSE_NAME,
     vid: 0x18d1,
     pid: 0x0001,
     bus: "usb",
@@ -63,6 +79,12 @@ function openVirtualMouse() {
       { type: "UI_SET_RELBIT", data: ["REL_X", "REL_Y"] },
     ],
   });
+  const deadline = Date.now() + 5_000;
+  while (!adb("shell", "dumpsys", "input").includes(MOUSE_NAME)) {
+    if (failure) throw new Error(failure);
+    if (Date.now() > deadline) throw new Error(`Android did not add ${MOUSE_NAME}`);
+    await setTimeout(250);
+  }
   return {
     // Pointer speed and acceleration scale relative motion, so steer by the
     // cursor position Android reports until it lands on the target.
@@ -104,10 +126,8 @@ async function waitForSelected(id) {
 const target = workspaceRows().find((row) => !row.selected);
 assert.ok(target, "Open the sidebar with at least one unselected workspace row first");
 
-const mouse = openVirtualMouse();
+const mouse = await openVirtualMouse();
 try {
-  // Give Android time to add the input device before the first event.
-  await setTimeout(1_000);
   await mouse.moveTo(target.title);
   await mouse.click();
   assert.ok(await waitForSelected(target.id), `Primary mouse click did not select ${target.id}`);
