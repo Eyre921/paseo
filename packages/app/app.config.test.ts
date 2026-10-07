@@ -1,11 +1,19 @@
+import { createRequire } from "node:module";
 import { afterEach, describe, expect, it } from "vitest";
 
-const { getPrebuildConfigAsync } = require("@expo/prebuild-config");
-const { compileModsAsync } = require("@expo/config-plugins/build/plugins/mod-compiler.js");
+// Load the copies the Expo CLI uses for prebuild, not older hoisted ones.
+const requireFromExpo = createRequire(require.resolve("expo/package.json"));
+const requireFromExpoCli = createRequire(requireFromExpo.resolve("@expo/cli/package.json"));
+const { getPrebuildConfigAsync } = requireFromExpoCli("@expo/prebuild-config");
+const { compileModsAsync } = requireFromExpoCli(
+  "@expo/config-plugins/build/plugins/mod-compiler.js",
+);
 
 interface ManifestEntry {
   $: Record<string, string>;
 }
+
+const originalFdroidFlag = process.env.PASEO_FDROID_BUILD;
 
 async function resolveAndroidManifest() {
   const { exp } = await getPrebuildConfigAsync(__dirname, { platforms: ["android"] });
@@ -20,18 +28,20 @@ async function resolveAndroidManifest() {
 
 describe("Android app config", () => {
   afterEach(() => {
-    delete process.env.PASEO_FDROID_BUILD;
+    if (originalFdroidFlag === undefined) {
+      delete process.env.PASEO_FDROID_BUILD;
+    } else {
+      process.env.PASEO_FDROID_BUILD = originalFdroidFlag;
+    }
   });
 
   it.each([
-    ["Google Play", undefined],
+    ["Google Play", "0"],
     ["F-Droid", "1"],
   ])(
     "%s build installs on devices without a camera",
     async (_build, fdroidFlag) => {
-      if (fdroidFlag) {
-        process.env.PASEO_FDROID_BUILD = fdroidFlag;
-      }
+      process.env.PASEO_FDROID_BUILD = fdroidFlag;
       const manifest = await resolveAndroidManifest();
       const permissions = (manifest["uses-permission"] ?? []).map(
         (entry: ManifestEntry) => entry.$["android:name"],
