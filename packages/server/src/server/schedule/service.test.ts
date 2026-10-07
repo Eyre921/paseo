@@ -1514,6 +1514,197 @@ describe("ScheduleService", () => {
     expect(storedAgent?.archivedAt).toBeTruthy();
   });
 
+  test("keeps a new-agent run open while the agent's background subagent is still running", async () => {
+    class BackgroundChildSession implements AgentSession {
+      readonly provider = "claude";
+      readonly capabilities = SCHEDULE_TEST_CAPABILITIES;
+      readonly id = "background-child-session";
+      closed = false;
+      launched = false;
+      private turnCount = 0;
+      private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
+
+      constructor(private readonly config: AgentSessionConfig) {}
+
+      async run(_prompt: AgentPromptInput, _options?: AgentRunOptions): Promise<AgentRunResult> {
+        throw new Error("Scheduled runs start turns");
+      }
+
+      // The shape of a Claude turn that calls Agent with run_in_background: true and ends without
+      // waiting: the child is still running when the parent's turn completes.
+      async startTurn(
+        _prompt: AgentPromptInput,
+        _options?: AgentRunOptions,
+      ): Promise<{ turnId: string }> {
+        const turnId = `turn-${++this.turnCount}`;
+        setImmediate(() => {
+          this.emit({ type: "turn_started", provider: this.provider, turnId });
+          this.emit({
+            type: "provider_subagent",
+            provider: this.provider,
+            event: { type: "upsert", id: "probe-child", title: "probe child", status: "running" },
+          });
+          this.emit({
+            type: "timeline",
+            provider: this.provider,
+            turnId,
+            item: { type: "assistant_message", text: "LAUNCHED" },
+          });
+          this.emit({
+            type: "turn_completed",
+            provider: this.provider,
+            turnId,
+            usage: { inputTokens: 1, outputTokens: 1 },
+          });
+          this.launched = true;
+        });
+        return { turnId };
+      }
+
+      // Claude marks the child completed, then its notification wakes the parent for a turn of
+      // its own.
+      finishChild(): void {
+        this.emit({
+          type: "provider_subagent",
+          provider: this.provider,
+          event: { type: "upsert", id: "probe-child", status: "completed" },
+        });
+        this.emit({ type: "turn_started", provider: this.provider });
+        this.emit({
+          type: "timeline",
+          provider: this.provider,
+          item: { type: "assistant_message", text: "CHILD_REPORTED" },
+        });
+        this.emit({
+          type: "turn_completed",
+          provider: this.provider,
+          usage: { inputTokens: 1, outputTokens: 1 },
+        });
+      }
+
+      subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+        this.subscribers.add(callback);
+        return () => {
+          this.subscribers.delete(callback);
+        };
+      }
+
+      async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
+
+      async getRuntimeInfo() {
+        return {
+          provider: this.provider,
+          sessionId: this.id,
+          model: this.config.model ?? null,
+          modeId: this.config.modeId ?? null,
+        };
+      }
+
+      async getAvailableModes(): Promise<AgentMode[]> {
+        return [];
+      }
+
+      async getCurrentMode(): Promise<string | null> {
+        return this.config.modeId ?? null;
+      }
+
+      async setMode(modeId: string): Promise<void> {
+        this.config.modeId = modeId;
+      }
+
+      getPendingPermissions(): AgentPermissionRequest[] {
+        return [];
+      }
+
+      async respondToPermission(
+        _requestId: string,
+        _response: AgentPermissionResponse,
+      ): Promise<void> {}
+
+      describePersistence(): AgentPersistenceHandle {
+        return { provider: this.provider, sessionId: this.id, metadata: { ...this.config } };
+      }
+
+      async interrupt(): Promise<void> {}
+
+      async close(): Promise<void> {
+        this.closed = true;
+      }
+
+      private emit(event: AgentStreamEvent): void {
+        for (const subscriber of this.subscribers) {
+          subscriber(event);
+        }
+      }
+    }
+
+    class BackgroundChildClient implements AgentClient {
+      readonly provider = "claude";
+      readonly capabilities = SCHEDULE_TEST_CAPABILITIES;
+      readonly sessions: BackgroundChildSession[] = [];
+
+      async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        const session = new BackgroundChildSession(config);
+        this.sessions.push(session);
+        return session;
+      }
+
+      async resumeSession(): Promise<AgentSession> {
+        throw new Error("Scheduled runs create fresh sessions");
+      }
+
+      async fetchCatalog(): Promise<{ models: AgentModelDefinition[]; modes: AgentMode[] }> {
+        return { models: [], modes: [] };
+      }
+
+      async isAvailable(): Promise<boolean> {
+        return true;
+      }
+    }
+
+    const client = new BackgroundChildClient();
+    const manager = new AgentManager({
+      logger: createTestLogger(),
+      clients: { claude: client },
+      registry: agentStorage,
+    });
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: manager,
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+    });
+    const created = await service.create({
+      prompt: "launch a background child and end your turn",
+      cadence: { type: "cron", expression: "0 3 1 1 *" },
+      target: {
+        type: "new-agent",
+        config: { provider: "claude", model: "test-model", cwd: tempDir },
+      },
+      runOnCreate: false,
+    });
+
+    let runSettled = false;
+    const run = service.runOnce(created.id).finally(() => {
+      runSettled = true;
+    });
+    await vi.waitFor(() => {
+      expect(client.sessions[0]?.launched).toBe(true);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(runSettled).toBe(false);
+    expect(client.sessions[0]?.closed).toBe(false);
+
+    client.sessions[0]!.finishChild();
+    const finished = await run;
+
+    expect(finished.runs[0]).toMatchObject({ status: "succeeded", output: "CHILD_REPORTED" });
+    expect(client.sessions[0]?.closed).toBe(true);
+  });
+
   test("records prompt-start failures as failed and archives the scheduled agent", async () => {
     class StartFailureScheduleSession implements AgentSession {
       readonly provider = "claude";
