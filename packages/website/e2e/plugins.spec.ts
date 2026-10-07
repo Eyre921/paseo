@@ -113,6 +113,22 @@ test("keeps the directory's ranking window when searching", async ({ page }) => 
   );
 });
 
+test("searches for a term typed before the page finished loading", async ({ page }) => {
+  let loadScripts!: () => void;
+  const scriptsHeld = new Promise<void>((resolve) => (loadScripts = resolve));
+  await page.route(/\.js($|\?)/, async (route) => {
+    await scriptsHeld;
+    await route.continue();
+  });
+  await page.goto("/plugins?window=month", { waitUntil: "domcontentloaded" });
+  await searchPlugins(page, "graphite");
+  loadScripts();
+  await page.waitForLoadState("load");
+  await expect(page.getByRole("button", { name: "Clear search" })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/plugins\/all\?q=graphite&window=month$/);
+});
+
 test("clears the search with the clear button", async ({ page }) => {
   await page.goto("/plugins/all");
   const searchbox = page.getByRole("searchbox", { name: "Search plugins" });
