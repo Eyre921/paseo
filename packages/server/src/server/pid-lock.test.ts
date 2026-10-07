@@ -1,4 +1,5 @@
 import { mkdtemp, open, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -84,7 +85,9 @@ describe("pid-lock ownership", () => {
       const staleTime = new Date(Date.now() - 10 * 60_000);
       await utimes(pidPath, staleTime, staleTime);
 
-      await expect(isLocked(paseoHome)).resolves.toMatchObject({ locked: true });
+      await expect(isLocked(paseoHome)).resolves.toMatchObject({
+        locked: true,
+      });
       await expect(
         acquirePidLock(paseoHome, null, { ownerPid: replacementOwnerPid }),
       ).rejects.toThrow("Another Paseo daemon is already running");
@@ -253,6 +256,41 @@ describe("pid-lock ownership", () => {
       expect(lock?.pid).toBe(process.pid);
       expect(lock?.listen).toBe("127.0.0.1:6767");
     } finally {
+      await rm(paseoHome, { recursive: true, force: true });
+    }
+  });
+
+  // #5863: the supervisor died without removing its lock, and later in the same boot the OS
+  // handed its PID to an unrelated process. A process that started after the lock was
+  // written cannot be the supervisor that wrote it.
+  test("treats a lock whose PID now belongs to a process started after it as abandoned", async () => {
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-reused-pid-"));
+    const lockWrittenAt = new Date(Date.now() - 60_000);
+    const unrelated = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], {
+      stdio: "ignore",
+    });
+
+    try {
+      const pidPath = join(paseoHome, "paseo.pid");
+      await writeFile(
+        pidPath,
+        JSON.stringify({
+          pid: unrelated.pid,
+          startedAt: lockWrittenAt.toISOString(),
+          hostname: "current-host",
+          uid: process.getuid?.() ?? 0,
+          listen: "127.0.0.1:6767",
+          desktopManaged: true,
+          heartbeat: true,
+        }),
+      );
+      await utimes(pidPath, lockWrittenAt, lockWrittenAt);
+
+      await expect(isLocked(paseoHome)).resolves.toMatchObject({
+        locked: false,
+      });
+    } finally {
+      unrelated.kill();
       await rm(paseoHome, { recursive: true, force: true });
     }
   });
