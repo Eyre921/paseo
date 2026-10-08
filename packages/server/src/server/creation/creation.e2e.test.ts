@@ -137,7 +137,7 @@ test("creation progresses before agent readiness and continues after the disconn
     await client.close();
     await observer.close();
     await daemon.close();
-    await rm(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 }, 60000);
 
@@ -203,7 +203,7 @@ test.each([false, true])(
     } finally {
       peer.close();
       await daemon.close();
-      await rm(directory, { recursive: true, force: true });
+      await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
   },
   60000,
@@ -257,7 +257,7 @@ test.each(["create_agent_request", "agent.create.request"] as const)(
     } finally {
       peer.close();
       await daemon.close();
-      await rm(directory, { recursive: true, force: true });
+      await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
   },
   60000,
@@ -297,7 +297,7 @@ test("legacy keyed creation preserves checkout error codes", async () => {
   } finally {
     peer.close();
     await daemon.close();
-    await rm(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 }, 60000);
 
@@ -364,7 +364,7 @@ test.each(["agent", "workspace"] as const)(
     } finally {
       await client.close();
       await daemon.close();
-      await rm(directory, { recursive: true, force: true });
+      await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
   },
   60000,
