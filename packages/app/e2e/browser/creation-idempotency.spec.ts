@@ -152,11 +152,16 @@ for (const entry of [
     page,
   }, testInfo) => {
     void promptRejection;
+    const prompt =
+      "Continue the attached conversation.\n" + "Earlier conversation context.\n".repeat(100);
     await entry.open(creation);
-    await creation.submitPrompt("Continue the attached conversation.", entry.button);
+    await creation.submitPrompt(prompt, entry.button);
     await entry.settled(creation);
     await creation.expectCreatedAgentError();
+    await creation.expectPromptBeforeError(prompt);
     await page.screenshot({ path: testInfo.outputPath("created-agent-prompt-error.png") });
+    await creation.reloadAgent();
+    await creation.expectPromptBeforeError(prompt);
     await creation.submitPrompt("emit 1 coalesced agent stream updates for a corrected prompt.");
     await creation.expectPromptVisible(
       "emit 1 coalesced agent stream updates for a corrected prompt.",

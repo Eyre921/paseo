@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import pino from "pino";
 import type { CreationSnapshot, SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import type { AgentTimelineItem } from "../agent/agent-sdk-types.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
@@ -331,6 +332,12 @@ test.each(["agent", "workspace"] as const)(
       initialPrompt: "Continue the attached conversation.",
       clientMessageId: "draft:initial-message",
     };
+    const streamed: AgentTimelineItem[] = [];
+    const unsubscribe = daemon.daemon.agentManager.subscribe((event) => {
+      if (event.type === "agent_stream" && event.event.type === "timeline") {
+        streamed.push(event.event.item);
+      }
+    });
     try {
       await client.connect();
       const submit = async () => {
@@ -355,13 +362,27 @@ test.each(["agent", "workspace"] as const)(
         error: null,
         agent: { id: created.id },
       });
+      const expectedTimeline = [
+        {
+          type: "user_message",
+          text: agent.initialPrompt,
+          clientMessageId: agent.clientMessageId,
+          messageId: agent.clientMessageId,
+        },
+        { type: "assistant_message", text: `[System Error] ${rejection}` },
+      ];
       expect(
         (await client.fetchAgentTimeline(created.id)).entries.map((entry) => entry.item),
-      ).toContainEqual({ type: "assistant_message", text: `[System Error] ${rejection}` });
+      ).toEqual(expectedTimeline);
+      expect(streamed).toEqual(expectedTimeline);
       expect((await submit()).id).toBe(created.id);
+      expect(
+        (await client.fetchAgentTimeline(created.id)).entries.map((entry) => entry.item),
+      ).toEqual(expectedTimeline);
       expect((await client.fetchAgents()).entries).toHaveLength(1);
       expect({ sessions, prompts }).toEqual({ sessions: 1, prompts: 1 });
     } finally {
+      unsubscribe();
       await client.close();
       await daemon.close();
       await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });

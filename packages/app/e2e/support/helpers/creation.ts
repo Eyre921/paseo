@@ -200,6 +200,21 @@ export async function createCreationScenario(page: Page) {
       await expect(page.getByRole("textbox", { name: "Message agent..." }).first()).toBeEditable();
       await expect(page.getByTestId("turn-working-indicator")).toHaveCount(0);
     },
+    async expectPromptBeforeError(prompt: string) {
+      const messages = page
+        .getByTestId("user-message")
+        .or(page.getByTestId("assistant-message"))
+        .filter({ visible: true });
+      await expect(messages).toHaveCount(2);
+      await expect(messages.nth(0)).toContainText(prompt);
+      await expect(messages.nth(1)).toContainText("[System Error]");
+      await expect(messages.nth(1)).toBeInViewport();
+    },
+    async reloadAgent() {
+      await page.reload();
+      await expect(page.getByText("Updating messages", { exact: true })).toHaveCount(0);
+      await this.expectCreatedAgentError();
+    },
     async expectAssistantReply() {
       await expect(
         page
