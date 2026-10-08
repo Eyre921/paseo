@@ -1581,7 +1581,6 @@ export const ptBR: TranslationResources = {
     },
   },
   addProject: {
-    panelLabel: "Adicionar projeto: {{page}}",
     titles: {
       host: "Escolher host",
       method: "Adicionar projeto",

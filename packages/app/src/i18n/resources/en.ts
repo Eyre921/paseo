@@ -1575,7 +1575,6 @@ export const en = {
     },
   },
   addProject: {
-    panelLabel: "Add project: {{page}}",
     titles: {
       host: "Choose host",
       method: "Add project",

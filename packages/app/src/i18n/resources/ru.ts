@@ -1578,7 +1578,6 @@ export const ru: TranslationResources = {
     },
   },
   addProject: {
-    panelLabel: "Добавить проект: {{page}}",
     titles: {
       host: "Выберите хост",
       method: "Добавить проект",

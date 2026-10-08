@@ -1551,7 +1551,6 @@ export const ar: TranslationResources = {
     },
   },
   addProject: {
-    panelLabel: "إضافة مشروع: {{page}}",
     titles: {
       host: "اختر المضيف",
       method: "إضافة مشروع",

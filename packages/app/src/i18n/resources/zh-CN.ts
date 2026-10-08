@@ -1534,7 +1534,6 @@ export const zhCN: TranslationResources = {
     },
   },
   addProject: {
-    panelLabel: "添加项目：{{page}}",
     titles: {
       host: "选择主机",
       method: "添加项目",

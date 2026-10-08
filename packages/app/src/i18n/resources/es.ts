@@ -1596,7 +1596,6 @@ export const es: TranslationResources = {
     },
   },
   addProject: {
-    panelLabel: "Añadir proyecto: {{page}}",
     titles: {
       host: "Elegir host",
       method: "Añadir proyecto",

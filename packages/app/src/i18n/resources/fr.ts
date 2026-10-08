@@ -1590,7 +1590,6 @@ export const fr: TranslationResources = {
     },
   },
   addProject: {
-    panelLabel: "Ajouter un projet : {{page}}",
     titles: {
       host: "Choisir l’hôte",
       method: "Ajouter un projet",

@@ -1560,7 +1560,6 @@ export const ko: TranslationResources = {
     },
   },
   addProject: {
-    panelLabel: "프로젝트 추가: {{page}}",
     titles: {
       host: "호스트 선택",
       method: "프로젝트 추가",

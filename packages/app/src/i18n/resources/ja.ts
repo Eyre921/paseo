@@ -1567,7 +1567,6 @@ export const ja: TranslationResources = {
     },
   },
   addProject: {
-    panelLabel: "プロジェクトを追加: {{page}}",
     titles: {
       host: "ホストを選択",
       method: "プロジェクトを追加",

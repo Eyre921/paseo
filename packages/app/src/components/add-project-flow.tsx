@@ -877,7 +877,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
           ref={setWebOverlayScope}
           style={styles.panel}
           testID={`add-project-flow-page-${page.kind}`}
-          accessibilityLabel={t("addProject.panelLabel", { page: page.kind })}
+          accessibilityLabel={pageTitle(page, t)}
         >
           <View style={styles.header}>
             <View style={styles.titleRow}>
