@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { z } from "zod";
+import { BUILTIN_PROVIDER_IDS } from "@getpaseo/protocol/provider-manifest";
 import { WebSocket } from "ws";
 import { SessionInboundMessageSchema, WSOutboundMessageSchema } from "@getpaseo/protocol/messages";
 import { randomUUID } from "node:crypto";
@@ -12,6 +13,18 @@ import type { CreationSnapshot, SessionOutboundMessage } from "@getpaseo/protoco
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+
+function createCreationDaemon(options: Parameters<typeof createTestPaseoDaemon>[0] = {}) {
+  const agentClients = options.agentClients ?? createTestAgentClients();
+  return createTestPaseoDaemon({
+    ...options,
+    agentClients,
+    // Installed provider CLIs must not change when background naming starts.
+    providerOverrides: Object.fromEntries(
+      BUILTIN_PROVIDER_IDS.map((id) => [id, { enabled: id in agentClients }]),
+    ),
+  });
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -29,7 +42,7 @@ test("creation progresses before agent readiness and continues after the disconn
   const directory = await mkdtemp(join(tmpdir(), "creation-wire-"));
   let agents = 0;
   let prompts = 0;
-  const daemon = await createTestPaseoDaemon({
+  const daemon = await createCreationDaemon({
     logger: pino(
       { level: "trace" },
       {
@@ -41,11 +54,13 @@ test("creation progresses before agent readiness and continues after the disconn
       },
     ),
     agentClients: createTestAgentClients({
-      beforeCreateSession: async () => {
+      beforeCreateSession: async (config) => {
+        if (config.internal) return;
         agents++;
         await provider.promise;
       },
-      onStartTurn: () => {
+      onStartTurn: (_prompt, config) => {
+        if (config.internal) return;
         prompts++;
       },
     }),
@@ -170,7 +185,7 @@ test.each([false, true])(
   "workspace identity does not depend on subscribing (first subscribe=%s)",
   async (subscribe) => {
     const directory = await mkdtemp(join(tmpdir(), "creation-identity-"));
-    const daemon = await createTestPaseoDaemon();
+    const daemon = await createCreationDaemon();
     const peer = await connectCreationPeer(daemon.port);
     try {
       const request = {
@@ -199,9 +214,10 @@ test.each(["create_agent_request", "agent.create.request"] as const)(
   async (type) => {
     const directory = await mkdtemp(join(tmpdir(), "creation-agent-identity-"));
     let creations = 0;
-    const daemon = await createTestPaseoDaemon({
+    const daemon = await createCreationDaemon({
       agentClients: createTestAgentClients({
-        beforeCreateSession: async () => {
+        beforeCreateSession: async (config) => {
+          if (config.internal) return;
           creations++;
         },
       }),
@@ -264,7 +280,7 @@ test("legacy keyed creation preserves checkout error codes", async () => {
     ],
     { cwd: directory, stdio: "pipe" },
   );
-  const daemon = await createTestPaseoDaemon({ agentClients: createTestAgentClients() });
+  const daemon = await createCreationDaemon({ agentClients: createTestAgentClients() });
   const peer = await connectCreationPeer(daemon.port);
   try {
     const result = await peer.request({
@@ -292,12 +308,14 @@ test.each(["agent", "workspace"] as const)(
     const rejection = "Input exceeds the maximum length of 1048576 characters.";
     let sessions = 0;
     let prompts = 0;
-    const daemon = await createTestPaseoDaemon({
+    const daemon = await createCreationDaemon({
       agentClients: createTestAgentClients({
-        beforeCreateSession: async () => {
+        beforeCreateSession: async (config) => {
+          if (config.internal) return;
           sessions++;
         },
-        onStartTurn: () => {
+        onStartTurn: (_prompt, config) => {
+          if (config.internal) return;
           prompts++;
           throw new Error(rejection);
         },
