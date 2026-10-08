@@ -63,6 +63,11 @@ const EXPECTED_CLAUDE_MODELS = [
     descriptionFragment: "Previous release",
   },
   {
+    id: "claude-mythos-5-1",
+    model: "Mythos 5.1",
+    descriptionFragment: "Requires verified access",
+  },
+  {
     id: "claude-fable-5-1",
     model: "Fable 5.1",
     descriptionFragment: "Most powerful",

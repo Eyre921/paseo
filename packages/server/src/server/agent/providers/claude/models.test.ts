@@ -52,6 +52,7 @@ describe("getClaudeModels", () => {
     expect(models.map((m) => m.id)).toEqual([
       "claude-opus-5-5",
       "claude-opus-5",
+      "claude-mythos-5-1",
       "claude-fable-5-1",
       "claude-fable-5",
       "claude-fable-5[1m]",
@@ -87,6 +88,7 @@ describe("getClaudeModels", () => {
       new Map([
         ["claude-opus-5-5", 1_000_000],
         ["claude-opus-5", 1_000_000],
+        ["claude-mythos-5-1", 1_000_000],
         ["claude-fable-5-1", 1_000_000],
         ["claude-fable-5", 1_000_000],
         ["claude-fable-5[1m]", 1_000_000],
@@ -723,4 +725,51 @@ describe("claudeManifestModelSupportsFastMode", () => {
     expect(claudeManifestModelSupportsFastMode("claude-fable-5")).toBe(false);
     expect(claudeManifestModelSupportsFastMode("claude-fable-5-1")).toBe(false);
   });
+});
+
+describe("Claude Mythos 5.1 catalog", () => {
+  it("offers one 1M model with high default effort and always-on thinking", () => {
+    const models = getClaudeModels().filter((model) => model.id.startsWith("claude-mythos"));
+    expect(models).toHaveLength(1);
+    expect(models[0]).toMatchObject({
+      id: "claude-mythos-5-1",
+      label: "Mythos 5.1",
+      contextWindowMaxTokens: 1_000_000,
+      defaultThinkingOptionId: "high",
+    });
+    expect(models[0].thinkingOptions?.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      CLAUDE_ULTRACODE_THINKING_OPTION_ID,
+    ]);
+    expect(
+      models[0].thinkingOptions?.filter((option) => option.isDefault).map((option) => option.id),
+    ).toEqual(["high"]);
+    expect(resolveClaudeDisabledThinkingForModel("claude-mythos-5-1")).toEqual({
+      supported: false,
+      fallbackThinkingOptionId: "high",
+    });
+    expect(claudeManifestModelSupportsFastMode("claude-mythos-5-1")).toBe(false);
+    expect(getClaudeModels().find((model) => model.isDefault)?.id).toBe("claude-opus-5-5");
+  });
+
+  it.each([
+    "claude-mythos-5-1[1m]",
+    "claude-mythos-5-1-20260901",
+    "claude-mythos-5-1-20260901[1m]",
+    "Mythos 5.1",
+  ])("resolves %s to the single catalog entry", (id) => {
+    expect(findClaudeModel(id)?.id).toBe("claude-mythos-5-1");
+  });
+
+  it.each(["anthropic/claude-mythos-5-1", "us.anthropic.claude-mythos-5-1-v1:0"])(
+    "normalizes runtime identity without granting first-party capabilities: %s",
+    (id) => {
+      expect(normalizeClaudeRuntimeModelId(id)).toBe("claude-mythos-5-1");
+      expect(normalizeClaudeManifestModelId(id)).toBeNull();
+    },
+  );
 });
