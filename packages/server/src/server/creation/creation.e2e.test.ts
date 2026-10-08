@@ -143,6 +143,7 @@ test("creation progresses before agent readiness and continues after the disconn
 }, 60000);
 
 async function connectCreationPeer(port: number) {
+  const timeout = 30_000;
   const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
   const frames: SessionOutboundMessage[] = [];
   socket.on("message", (data) => {
@@ -163,7 +164,9 @@ async function connectCreationPeer(port: number) {
     }),
   );
   await expect
-    .poll(() => frames.some((m) => m.type === "status" && m.payload.status === "server_info"))
+    .poll(() => frames.some((m) => m.type === "status" && m.payload.status === "server_info"), {
+      timeout,
+    })
     .toBe(true);
   return {
     close: () => socket.close(),
@@ -176,7 +179,7 @@ async function connectCreationPeer(port: number) {
           (m) =>
             "payload" in m && "requestId" in m.payload && m.payload.requestId === message.requestId,
         );
-      await expect.poll(response).toBeDefined();
+      await expect.poll(response, { timeout }).toBeDefined();
       return response()!;
     },
   };
@@ -220,6 +223,8 @@ test.each(["create_agent_request", "agent.create.request"] as const)(
         beforeCreateSession: async (config) => {
           if (config.internal) return;
           creations++;
+          // A real provider or Git checkout may take longer than Vitest's default 1s poll budget.
+          await new Promise((resolve) => setTimeout(resolve, 1_200));
         },
       }),
     });
