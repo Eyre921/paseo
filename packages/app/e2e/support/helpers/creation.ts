@@ -182,6 +182,32 @@ export async function createCreationScenario(page: Page) {
       await this.expectWorkspaceReadyBeforeAgentCompletion();
       expect((await project.client.fetchAgents()).entries).toHaveLength(0);
     },
+    async expectCreatedAgentError() {
+      await requests.settled();
+      await expect(
+        page
+          .getByTestId("assistant-message")
+          .filter({ hasText: "[System Error] Requested mock prompt rejection", visible: true }),
+      ).toBeVisible();
+      await expect(
+        page
+          .locator('[data-testid^="workspace-tab-agent_"][aria-selected="true"]')
+          .filter({ visible: true }),
+      ).toBeVisible();
+      await expect(
+        page.locator('[data-testid^="workspace-tab-draft_"]').filter({ visible: true }),
+      ).toHaveCount(0);
+      await expect(page.getByRole("textbox", { name: "Message agent..." }).first()).toBeEditable();
+      await expect(page.getByTestId("turn-working-indicator")).toHaveCount(0);
+    },
+    async expectAssistantReply() {
+      await expect(
+        page
+          .getByTestId("assistant-message")
+          .filter({ visible: true, hasNotText: "[System Error]" })
+          .first(),
+      ).toBeVisible();
+    },
     async expectStartupFailure() {
       await expect(page.getByText(/Creation startup failed for test/).first()).toBeVisible();
     },

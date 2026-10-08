@@ -284,3 +284,70 @@ test("legacy keyed creation preserves checkout error codes", async () => {
     await rm(directory, { recursive: true, force: true });
   }
 }, 60000);
+
+test.each(["agent", "workspace"] as const)(
+  "%s creation succeeds when the provider rejects its initial prompt",
+  async (kind) => {
+    const directory = await mkdtemp(join(tmpdir(), "creation-prompt-rejected-"));
+    const rejection = "Input exceeds the maximum length of 1048576 characters.";
+    let sessions = 0;
+    let prompts = 0;
+    const daemon = await createTestPaseoDaemon({
+      agentClients: createTestAgentClients({
+        beforeCreateSession: async () => {
+          sessions++;
+        },
+        onStartTurn: () => {
+          prompts++;
+          throw new Error(rejection);
+        },
+      }),
+    });
+    const client = new DaemonClient({
+      url: `ws://127.0.0.1:${daemon.port}/ws`,
+      appVersion: "0.11.1",
+    });
+    const snapshots: CreationSnapshot[] = [];
+    const agent = {
+      config: { provider: "codex", cwd: directory },
+      initialPrompt: "Continue the attached conversation.",
+      clientMessageId: "draft:initial-message",
+    };
+    try {
+      await client.connect();
+      const submit = async () => {
+        const common = {
+          idempotencyKey: "rejected-first-prompt",
+          onEvent: (snapshot: CreationSnapshot) => snapshots.push(snapshot),
+        };
+        if (kind === "agent") return client.createAgent({ ...common, ...agent });
+        const result = await client.createWorkspace({
+          ...common,
+          source: { kind: "directory", path: directory },
+          agent,
+        });
+        expect(result.error).toBeNull();
+        return result.agent!;
+      };
+      const created = await submit();
+      expect(created).toMatchObject({ status: "error", lastError: rejection });
+      expect(snapshots.map((snapshot) => snapshot.phase)).not.toContain("prompt_started");
+      expect(snapshots.at(-1)).toMatchObject({
+        phase: "completed",
+        error: null,
+        agent: { id: created.id },
+      });
+      expect(
+        (await client.fetchAgentTimeline(created.id)).entries.map((entry) => entry.item),
+      ).toContainEqual({ type: "assistant_message", text: `[System Error] ${rejection}` });
+      expect((await submit()).id).toBe(created.id);
+      expect((await client.fetchAgents()).entries).toHaveLength(1);
+      expect({ sessions, prompts }).toEqual({ sessions: 1, prompts: 1 });
+    } finally {
+      await client.close();
+      await daemon.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  60000,
+);
